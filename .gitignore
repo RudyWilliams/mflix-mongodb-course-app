@@ -1,0 +1,7 @@
+.vscode/
+venv/
+.ini 
+# contains password so don't want that on repo
+__pycache__/
+.cache/
+.ipynb_checkpoints
