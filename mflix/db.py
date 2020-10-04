@@ -44,11 +44,11 @@ def get_db():
         """
 
         db = g._database = MongoClient(
-        MFLIX_DB_URI,
-        # TODO: Connection Pooling
-        # Set the maximum connection pool size to 50 active connections.
-        # TODO: Timeouts
-        # Set the write timeout limit to 2500 milliseconds.
+            MFLIX_DB_URI,
+            # TODO: Connection Pooling
+            # Set the maximum connection pool size to 50 active connections.
+            # TODO: Timeouts
+            # Set the write timeout limit to 2500 milliseconds.
         )[MFLIX_DB_NAME]
     return db
 
@@ -78,7 +78,9 @@ def get_movies_by_country(countries):
         # Find movies matching the "countries" list, but only return the title
         # and _id. Do not include a limit in your own implementation, it is
         # included here to avoid sending 46000 documents down the wire.
-        return list(db.movies.find().limit(1))
+        return list(
+            db.movies.find({"countries": {"$in": countries}}, projection={"title": 1})
+        )
 
     except Exception as e:
         return e
@@ -96,11 +98,12 @@ def get_movies_faceted(filters, page, movies_per_page):
     pipeline = []
 
     if "cast" in filters:
-        pipeline.extend([{
-            "$match": {"cast": {"$in": filters.get("cast")}}
-        }, {
-            "$sort": {sort_key: DESCENDING}
-        }])
+        pipeline.extend(
+            [
+                {"$match": {"cast": {"$in": filters.get("cast")}}},
+                {"$sort": {sort_key: DESCENDING}},
+            ]
+        )
     else:
         raise AssertionError("No filters to pass to faceted search!")
 
@@ -112,31 +115,27 @@ def get_movies_faceted(filters, page, movies_per_page):
     limit_stage = {"$limit": movies_per_page}
     facet_stage = {
         "$facet": {
-            "runtime": [{
-                "$bucket": {
-                    "groupBy": "$runtime",
-                    "boundaries": [0, 60, 90, 120, 180],
-                    "default": "other",
-                    "output": {
-                        "count": {"$sum": 1}
+            "runtime": [
+                {
+                    "$bucket": {
+                        "groupBy": "$runtime",
+                        "boundaries": [0, 60, 90, 120, 180],
+                        "default": "other",
+                        "output": {"count": {"$sum": 1}},
                     }
                 }
-            }],
-            "rating": [{
-                "$bucket": {
-                    "groupBy": "$metacritic",
-                    "boundaries": [0, 50, 70, 90, 100],
-                    "default": "other",
-                    "output": {
-                        "count": {"$sum": 1}
+            ],
+            "rating": [
+                {
+                    "$bucket": {
+                        "groupBy": "$metacritic",
+                        "boundaries": [0, 50, 70, 90, 100],
+                        "default": "other",
+                        "output": {"count": {"$sum": 1}},
                     }
                 }
-            }],
-            "movies": [{
-                "$addFields": {
-                    "title": "$title"
-                }
-            }]
+            ],
+            "movies": [{"$addFields": {"title": "$title"}}],
         }
     }
 
@@ -156,12 +155,12 @@ def get_movies_faceted(filters, page, movies_per_page):
 
     try:
         movies = list(db.movies.aggregate(pipeline, allowDiskUse=True))[0]
-        count = list(db.movies.aggregate(counting, allowDiskUse=True))[
-            0].get("count")
+        count = list(db.movies.aggregate(counting, allowDiskUse=True))[0].get("count")
         return (movies, count)
     except OperationFailure:
         raise OperationFailure(
-            "Results too large to sort, be more restrictive in filter")
+            "Results too large to sort, be more restrictive in filter"
+        )
 
 
 def build_query_sort_project(filters):
@@ -260,13 +259,7 @@ def get_movie(id):
 
         # TODO: Get Comments
         # Implement the required pipeline.
-        pipeline = [
-            {
-                "$match": {
-                    "_id": ObjectId(id)
-                }
-            }
-        ]
+        pipeline = [{"$match": {"_id": ObjectId(id)}}]
 
         movie = db.movies.aggregate(pipeline).next()
         return movie
@@ -293,10 +286,14 @@ def get_all_genres():
     """
     Returns list of all genres in the database.
     """
-    return list(db.movies.aggregate([
-        {"$unwind": "$genres"},
-        {"$group": {"_id": None, "genres": {"$addToSet": "$genres"}}}
-    ]))[0]["genres"]
+    return list(
+        db.movies.aggregate(
+            [
+                {"$unwind": "$genres"},
+                {"$group": {"_id": None, "genres": {"$addToSet": "$genres"}}},
+            ]
+        )
+    )[0]["genres"]
 
 
 """
@@ -326,7 +323,7 @@ def add_comment(movie_id, user, comment, date):
     """
     # TODO: Create/Update Comments
     # Construct the comment document to be inserted into MongoDB.
-    comment_doc = { "some_field": "some_value" }
+    comment_doc = {"some_field": "some_value"}
     return db.comments.insert_one(comment_doc)
 
 
@@ -340,8 +337,7 @@ def update_comment(comment_id, user_email, text, date):
     # Use the user_email and comment_id to select the proper comment, then
     # update the "text" and "date" of the selected comment.
     response = db.comments.update_one(
-        { "some_field": "some_value" },
-        { "$set": { "some_other_field": "some_other_value" } }
+        {"some_field": "some_value"}, {"$set": {"some_other_field": "some_other_value"}}
     )
 
     return response
@@ -362,7 +358,7 @@ def delete_comment(comment_id, user_email):
 
     # TODO: Delete Comments
     # Use the user_email and comment_id to delete the proper comment.
-    response = db.comments.delete_one( { "_id": ObjectId(comment_id) } )
+    response = db.comments.delete_one({"_id": ObjectId(comment_id)})
     return response
 
 
@@ -389,7 +385,7 @@ def get_user(email):
     """
     # TODO: User Management
     # Retrieve the user document corresponding with the user's email.
-    return db.users.find_one({ "some_field": "some_value" })
+    return db.users.find_one({"some_field": "some_value"})
 
 
 def add_user(name, email, hashedpw):
@@ -410,11 +406,13 @@ def add_user(name, email, hashedpw):
         # Insert a user with the "name", "email", and "password" fields.
         # TODO: Durable Writes
         # Use a more durable Write Concern for this operation.
-        db.users.insert_one({
-            "name": "mongo",
-            "email": "mongo@mongodb.com",
-            "password": "flibbertypazzle"
-        })
+        db.users.insert_one(
+            {
+                "name": "mongo",
+                "email": "mongo@mongodb.com",
+                "password": "flibbertypazzle",
+            }
+        )
         return {"success": True}
     except DuplicateKeyError:
         return {"error": "A user with the given email already exists."}
@@ -432,8 +430,8 @@ def login_user(email, jwt):
         # Use an UPSERT statement to update the "jwt" field in the document,
         # matching the "user_id" field with the email passed to this function.
         db.sessions.update_one(
-            { "some_field": "some_value" },
-            { "$set": { "some_other_field": "some_other_value" } }
+            {"some_field": "some_value"},
+            {"$set": {"some_other_field": "some_other_value"}},
         )
         return {"success": True}
     except Exception as e:
@@ -450,7 +448,7 @@ def logout_user(email):
     try:
         # TODO: User Management
         # Delete the document in the `sessions` collection matching the email.
-        db.sessions.delete_one({ "some_field": "some_value" })
+        db.sessions.delete_one({"some_field": "some_value"})
         return {"success": True}
     except Exception as e:
         return {"error": e}
@@ -465,7 +463,7 @@ def get_user_session(email):
     try:
         # TODO: User Management
         # Retrieve the session document corresponding with the user's email.
-        return db.sessions.find_one({ "some_field": "some_value" })
+        return db.sessions.find_one({"some_field": "some_value"})
     except Exception as e:
         return {"error": e}
 
@@ -478,8 +476,8 @@ def delete_user(email):
     try:
         # TODO: User Management
         # Delete the corresponding documents from `users` and `sessions`.
-        db.sessions.delete_one({ "some_field": "some_value" })
-        db.users.delete_one({ "some_field": "some_value" })
+        db.sessions.delete_one({"some_field": "some_value"})
+        db.users.delete_one({"some_field": "some_value"})
         if get_user(email) is None:
             return {"success": True}
         else:
@@ -506,15 +504,15 @@ def update_prefs(email, prefs):
         # TODO: User preferences
         # Use the data in "prefs" to update the user's preferences.
         response = db.users.update_one(
-            { "some_field": "some_value" },
-            { "$set": { "some_other_field": "some_other_value" } }
+            {"some_field": "some_value"},
+            {"$set": {"some_other_field": "some_other_value"}},
         )
         if response.matched_count == 0:
-            return {'error': 'no user found'}
+            return {"error": "no user found"}
         else:
             return response
     except Exception as e:
-        return {'error': str(e)}
+        return {"error": str(e)}
 
 
 def most_active_commenters():
@@ -535,7 +533,7 @@ def most_active_commenters():
     # Return the 20 users who have commented the most on MFlix.
     pipeline = []
 
-    rc = db.comments.read_concern # you may want to change this read concern!
+    rc = db.comments.read_concern  # you may want to change this read concern!
     comments = db.comments.with_options(read_concern=rc)
     result = comments.aggregate(pipeline)
     return list(result)
@@ -559,8 +557,11 @@ def get_configuration():
     """
 
     try:
-        role_info = db.command({'connectionStatus': 1}).get('authInfo').get(
-            'authenticatedUserRoles')[0]
+        role_info = (
+            db.command({"connectionStatus": 1})
+            .get("authInfo")
+            .get("authenticatedUserRoles")[0]
+        )
         return (db.client.max_pool_size, db.client.write_concern, role_info)
     except IndexError:
         return (db.client.max_pool_size, db.client.write_concern, {})
